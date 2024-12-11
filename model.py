@@ -15,6 +15,14 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+def get_sinusoidal_embeddings(n_pos, d_model):
+    position = torch.arange(n_pos).unsqueeze(1)
+    div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+    pe = torch.zeros(n_pos, d_model)
+    pe[:, 0::2] = torch.sin(position * div_term)
+    pe[:, 1::2] = torch.cos(position * div_term)
+    return pe
+
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
@@ -114,6 +122,7 @@ class GPTConfig:
     n_embd: int = 768
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    pos_embedding_type: str = 'learned'  # 'learned' or 'sinusoidal'
 
 class GPT(nn.Module):
 
@@ -125,7 +134,9 @@ class GPT(nn.Module):
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
-            wpe = nn.Embedding(config.block_size, config.n_embd),
+            wpe = (nn.Parameter(get_sinusoidal_embeddings(config.block_size, config.n_embd), requires_grad=False) 
+                   if config.pos_embedding_type == 'sinusoidal'
+                   else nn.Embedding(config.block_size, config.n_embd)),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias),

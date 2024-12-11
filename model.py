@@ -34,6 +34,15 @@ class LayerNorm(nn.Module):
     def forward(self, input):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
+def remax(x, dim):
+    # Get top 3 values along attention dim, keeping dims for broadcasting
+    top_values, _ = torch.topk(x, k=3, dim=dim)
+    third_highest = top_values[..., 2:3]  # Keep dims for broadcasting
+    
+    # Subtract third highest and apply ReLU
+    shifted = x - third_highest
+    return F.relu(shifted)
+
 class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
@@ -56,6 +65,7 @@ class CausalSelfAttention(nn.Module):
             # causal mask to ensure that attention is only applied to the left in the input sequence
             self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
                                         .view(1, 1, config.block_size, config.block_size))
+        self.attention_activation = config.attention_activation
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -74,7 +84,12 @@ class CausalSelfAttention(nn.Module):
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
             att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-            att = F.softmax(att, dim=-1)
+            if self.attention_activation == 'softmax':
+                att = F.softmax(att, dim=-1)
+            elif self.attention_activation == 'remax':
+                att = remax(att, dim=-1)
+            else:
+                raise ValueError(f"Unknown attention activation: {self.attention_activation}")
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
@@ -123,6 +138,7 @@ class GPTConfig:
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     pos_embedding_type: str = 'learned'  # 'learned' or 'sinusoidal'
+    attention_activation: str = 'softmax'  # 'softmax' or 'remax'
 
 class GPT(nn.Module):
 

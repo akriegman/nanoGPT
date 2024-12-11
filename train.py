@@ -146,6 +146,12 @@ if os.path.exists(meta_path):
     meta_vocab_size = meta['vocab_size']
     print(f"found vocab_size = {meta_vocab_size} (inside {meta_path})")
 
+# Initialize training history lists
+train_losses = []
+train_iters = []
+val_losses = []
+eval_iters_list = []
+
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
@@ -191,10 +197,6 @@ elif init_from.startswith('gpt2'):
     # read off the created config params, so we can store them into checkpoint correctly
     for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
         model_args[k] = getattr(model.config, k)
-else:
-    # Initialize empty histories for fresh training
-    train_losses = []
-    train_iters = []
     
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:

@@ -41,7 +41,9 @@ def remax(x, dim):
     
     # Subtract third highest and apply ReLU
     shifted = x - third_highest
-    return F.relu(shifted)
+    output = F.relu(shifted)
+    print(output)
+    return output
 
 class CausalSelfAttention(nn.Module):
 

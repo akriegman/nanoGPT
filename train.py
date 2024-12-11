@@ -160,7 +160,6 @@ if init_from == 'scratch':
     model = GPT(gptconf)
 elif init_from == 'resume':
     print(f"Resuming training from {out_dir}")
-    # resume training from a checkpoint.
     ckpt_path = os.path.join(out_dir, 'ckpt.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
     checkpoint_model_args = checkpoint['model_args']
@@ -181,6 +180,13 @@ elif init_from == 'resume':
     model.load_state_dict(state_dict)
     iter_num = checkpoint['iter_num']
     best_val_loss = checkpoint['best_val_loss']
+    # Load the loss histories
+    train_losses = checkpoint.get('train_losses', [])
+    train_iters = checkpoint.get('train_iters', [])
+else:
+    # Initialize empty histories for fresh training
+    train_losses = []
+    train_iters = []
 elif init_from.startswith('gpt2'):
     print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
     # initialize from OpenAI GPT-2 weights
@@ -256,12 +262,6 @@ local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 
-# After model initialization, before training loop:
-train_losses = []
-val_losses = []
-train_iters_list = []  # for every training loss
-eval_iters_list = []   # for validation loss points
-
 while True:
 
     # determine and set the learning rate for this iteration
@@ -284,7 +284,7 @@ while True:
         # Record training loss at every step
         if micro_step == 0:  # only record once per iter to avoid duplicates
             train_losses.append(loss.item() * gradient_accumulation_steps)  # unscale the loss
-            train_iters_list.append(iter_num)
+            train_iters.append(iter_num)
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
@@ -340,7 +340,7 @@ while True:
                     'config': config,
                     'train_losses': train_losses,
                     'val_losses': val_losses,
-                    'train_iters': train_iters_list,
+                    'train_iters': train_iters,
                     'eval_iters': eval_iters_list,
                 }
                 print(f"saving checkpoint to {out_dir}")

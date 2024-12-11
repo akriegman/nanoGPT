@@ -66,7 +66,7 @@ class CausalSelfAttention(nn.Module):
             # causal mask to ensure that attention is only applied to the left in the input sequence
             self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
                                         .view(1, 1, config.block_size, config.block_size))
-        self.attention_activation = config.attention_activation
+        self.attention_activation = F.softmax if config.attention_activation == 'softmax' else remax
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -85,12 +85,7 @@ class CausalSelfAttention(nn.Module):
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
             att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-            if self.attention_activation == 'softmax':
-                att = F.softmax(att, dim=-1)
-            elif self.attention_activation == 'remax':
-                att = remax(att, dim=-1)
-            else:
-                raise ValueError(f"Unknown attention activation: {self.attention_activation}")
+            att = self.attention_activation(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side

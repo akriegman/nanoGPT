@@ -42,6 +42,11 @@ def remax(x, dim):
     # Subtract third highest and apply ReLU
     shifted = x - third_highest
     output = F.relu(shifted)
+    
+    # Normalize so each row sums to 1
+    row_sums = output.sum(dim=dim, keepdim=True)
+    output = output / (row_sums + 1e-8)  # add small epsilon to prevent division by zero
+    
     return output
 
 class CausalSelfAttention(nn.Module):

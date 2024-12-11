@@ -35,17 +35,40 @@ class LayerNorm(nn.Module):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 def remax(x, dim):
+    # Print input stats
+    with torch.no_grad():
+        print(f"\nRemax input - Mean: {x.mean():.3f}, Max: {x.max():.3f}, Min: {x.min():.3f}")
+        if torch.isnan(x).any():
+            print("WARNING: NaN detected in input")
+    
     # Get top 3 values along attention dim, keeping dims for broadcasting
     top_values, _ = torch.topk(x, k=3, dim=dim)
     third_highest = top_values[..., 2:3]  # Keep dims for broadcasting
+    
+    # Print third highest stats
+    with torch.no_grad():
+        print(f"Third highest - Mean: {third_highest.mean():.3f}, Max: {third_highest.max():.3f}, Min: {third_highest.min():.3f}")
     
     # Subtract third highest and apply ReLU
     shifted = x - third_highest
     output = F.relu(shifted)
     
+    # Print pre-normalization stats
+    with torch.no_grad():
+        print(f"Pre-norm - Mean: {output.mean():.3f}, Max: {output.max():.3f}, Min: {output.min():.3f}")
+        row_sums = output.sum(dim=dim, keepdim=True)
+        print(f"Row sums - Mean: {row_sums.mean():.3f}, Max: {row_sums.max():.3f}, Min: {row_sums.min():.3f}")
+        if torch.any(row_sums == 0):
+            print("WARNING: Zero row sums detected!")
+    
     # Normalize so each row sums to 1
-    row_sums = output.sum(dim=dim, keepdim=True)
     output = output / (row_sums + 1e-8)  # add small epsilon to prevent division by zero
+    
+    # Print final output stats
+    with torch.no_grad():
+        print(f"Output - Mean: {output.mean():.3f}, Max: {output.max():.3f}, Min: {output.min():.3f}")
+        if torch.isnan(output).any():
+            print("WARNING: NaN detected in output")
     
     return output
 

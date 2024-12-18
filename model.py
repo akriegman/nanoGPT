@@ -145,6 +145,7 @@ class GPTConfig:
     pos_embedding_type: str = 'learned'  # 'learned' or 'sinusoidal'
     attention_activation: str = 'softmax'  # 'softmax' or 'remax'
     optimizer: str = 'adamw'  # 'adamw' or 'muon'
+    noise: float = 0.0  # gradient noise scale
 
 class GPT(nn.Module):
 
@@ -299,59 +300,72 @@ class GPT(nn.Module):
         # filter out those that do not require grad
         param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
 
+        # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+
         if self.config.optimizer == 'adamw':
-            # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
-            decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
-            nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
-            optim_groups = [
+            # Create parameter groups with different weight decays
+            adamw_groups = [
                 {'params': decay_params, 'weight_decay': weight_decay},
                 {'params': nodecay_params, 'weight_decay': 0.0}
             ]
-            num_decay_params = sum(p.numel() for p in decay_params)
-            num_nodecay_params = sum(p.numel() for p in nodecay_params)
-            print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
-            print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
             
-            # Create AdamW optimizer and use the fused version if it is available
-            fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
-            use_fused = fused_available and device_type == 'cuda'
-            extra_args = dict(fused=True) if use_fused else dict()
-            optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
-            print(f"using fused AdamW: {use_fused}")
+            # Use Muon's AdamW implementation with empty muon_params
+            optimizer = Muon(
+                muon_params=[],  # No parameters use Muon
+                lr=learning_rate,
+                momentum=0.95,  # This won't affect AdamW params
+                adamw_params=adamw_groups,
+                adamw_lr=learning_rate,
+                adamw_betas=betas,
+                noise=self.config.noise  # Pass through noise parameter
+            )
+            print("using Muon's AdamW implementation")
 
         elif self.config.optimizer == 'muon':
-            
             # Parameters for Muon (≥2D params in transformer blocks)
             muon_params = []
             # Parameters for AdamW (embeddings, head, and <2D params)
-            adamw_params = []
+            decay_params = []
+            nodecay_params = []
             
             for name, param in param_dict.items():
-                # Embeddings and head should use AdamW
                 if 'wte' in name or 'wpe' in name or 'lm_head' in name:
-                    adamw_params.append(param)
-                # For transformer blocks, ≥2D params use Muon, others use AdamW
+                    if param.dim() >= 2:
+                        decay_params.append(param)
+                    else:
+                        nodecay_params.append(param)
                 elif param.dim() >= 2:
                     muon_params.append(param)
                 else:
-                    adamw_params.append(param)
+                    nodecay_params.append(param)
             
             print(f"num Muon parameters: {sum(p.numel() for p in muon_params):,}")
-            print(f"num AdamW parameters: {sum(p.numel() for p in adamw_params):,}")
+            print(f"num AdamW decay parameters: {sum(p.numel() for p in decay_params):,}")
+            print(f"num AdamW no-decay parameters: {sum(p.numel() for p in nodecay_params):,}")
             
-            # Muon typically needs higher learning rate than AdamW
+            # Create AdamW parameter groups with different weight decay
+            adamw_groups = [
+                {'params': decay_params, 'weight_decay': weight_decay},
+                {'params': nodecay_params, 'weight_decay': 0.0}
+            ]
+            
             optimizer = Muon(
                 muon_params, 
-                lr=learning_rate * 20,  # Muon typically needs ~20x higher lr
-                momentum=0.95,  # From Muon README
-                adamw_params=adamw_params,
+                lr=learning_rate * 20,
+                momentum=0.95,
+                adamw_params=adamw_groups,
                 adamw_lr=learning_rate,
                 adamw_betas=betas,
-                adamw_wd=weight_decay
+                noise=self.config.noise  # Pass through noise parameter
             )
             print("using Muon optimizer")
-        else:
-            raise ValueError(f"Unknown optimizer: {self.config.optimizer}")
 
         return optimizer
 

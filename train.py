@@ -75,6 +75,7 @@ compile = True # use PyTorch 2.0 to compile the model to be faster
 pos_embedding_type = 'learned'  # 'learned' or 'sinusoidal'
 attention_activation = 'softmax'  # 'softmax' or 'remax'
 optimizer = 'adamw' # 'adamw' or 'muon'
+noise = 0.0
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
@@ -158,7 +159,8 @@ model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=bloc
                   bias=bias, vocab_size=None, dropout=dropout, 
                   attention_activation=attention_activation,
                   pos_embedding_type=pos_embedding_type,
-                  optimizer=optimizer) # start with model_args from command line
+                  optimizer=optimizer,
+                  noise=noise) # add noise to model_args
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -301,6 +303,7 @@ while True:
     if grad_clip != 0.0:
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+
     # step the optimizer and scaler if training in fp16
     scaler.step(optimizer)
     scaler.update()

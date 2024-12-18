@@ -56,29 +56,37 @@ class Muon(torch.optim.Optimizer):
         adamw_betas: The betas for the internal AdamW.
         adamw_eps: The epsilon for the internal AdamW.
         adamw_wd: The weight decay for the internal AdamW.
+        noise: The noise level for the internal SGD.
     """
     def __init__(self, muon_params, lr=0.02, momentum=0.95, nesterov=True, ns_steps=6,
-                 adamw_params=None, adamw_lr=3e-4, adamw_betas=(0.95, 0.95), adamw_eps=1e-8, adamw_wd=0):
+                 adamw_params=None, adamw_lr=3e-4, adamw_betas=(0.95, 0.95), adamw_eps=1e-8, adamw_wd=0, noise=0.0):
 
+        # Create parameter groups with their respective weight decays
+        muon_groups = [{'params': muon_params, 'weight_decay': 0.0}] if muon_params else []
+        adamw_groups = []
+        
+        if adamw_params:
+            if isinstance(adamw_params, list) and isinstance(adamw_params[0], dict):
+                # If adamw_params is already a list of param groups, use as is
+                adamw_groups = adamw_params
+            else:
+                # If adamw_params is just a list of parameters, create single group
+                adamw_groups = [{'params': adamw_params, 'weight_decay': adamw_wd}]
+
+        # Combine all parameter groups
+        param_groups = muon_groups + adamw_groups
+        
         defaults = dict(lr=lr, momentum=momentum, nesterov=nesterov, ns_steps=ns_steps,
-                        adamw_lr_ratio=adamw_lr/lr, adamw_betas=adamw_betas,
-                        adamw_eps=adamw_eps, adamw_wd=adamw_wd)
-
-        params = list(muon_params)
-        adamw_params = list(adamw_params) if adamw_params is not None else []
-        params.extend(adamw_params)
-        super().__init__(params, defaults)
+                       adamw_lr_ratio=adamw_lr/lr, adamw_betas=adamw_betas,
+                       adamw_eps=adamw_eps, noise=noise)
+        
+        super().__init__(param_groups, defaults)
 
         # Sort parameters into those for which we will use Muon, and those for which we will not
-        for p in muon_params:
-            # Use Muon for every parameter in muon_params which is >= 2D and doesn't look like an embedding or head layer
-            if p.ndim >= 2 and p.size(0) < 10000:
-                self.state[p]['use_muon'] = True
-            else:
-                self.state[p]['use_muon'] = False
-        for p in adamw_params:
-            # Do not use Muon for parameters in adamw_params
-            self.state[p]['use_muon'] = False
+        for group in self.param_groups:
+            for p in group['params']:
+                # Use Muon for every parameter in muon_params which is >= 2D and doesn't look like an embedding or head layer
+                self.state[p]['use_muon'] = (p in muon_params)
 
         if 'WORLD_SIZE' in os.environ:
             self.world_size = int(os.environ['WORLD_SIZE'])
@@ -100,6 +108,12 @@ class Muon(torch.optim.Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
+            # Apply weight decay before optimizer step
+            weight_decay = group.get('weight_decay', 0.0)
+            if weight_decay != 0.0:
+                for p in group['params']:
+                    if p.grad is not None:
+                        p.data.mul_(1 - group['lr'] * weight_decay)
 
             ############################
             #           Muon           #
@@ -173,7 +187,7 @@ class Muon(torch.optim.Optimizer):
                 buf1.lerp_(g, 1-beta1)
                 buf2.lerp_(g.square(), 1-beta2)
 
-                g = buf1 / (eps + buf2.sqrt())
+                g = (buf1 + (torch.randn_like(g) * group['noise'])) / (eps + buf2.sqrt())
 
                 bias_correction1 = 1 - beta1**step
                 bias_correction2 = 1 - beta2**step

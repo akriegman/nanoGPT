@@ -157,7 +157,8 @@ eval_iters_list = []
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout, 
                   attention_activation=attention_activation,
-                  pos_embedding_type=pos_embedding_type) # start with model_args from command line
+                  pos_embedding_type=pos_embedding_type,
+                  optimizer=optimizer) # start with model_args from command line
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")

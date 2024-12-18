@@ -74,6 +74,7 @@ dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported
 compile = True # use PyTorch 2.0 to compile the model to be faster
 pos_embedding_type = 'learned'  # 'learned' or 'sinusoidal'
 attention_activation = 'softmax'  # 'softmax' or 'remax'
+optimizer = 'adamw' # 'adamw' or 'muon'
 
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]

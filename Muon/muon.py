@@ -169,7 +169,7 @@ class Muon(torch.optim.Optimizer):
             lr = group['adamw_lr_ratio'] * group['lr'] # in order for lr schedule to work
             beta1, beta2 = group['adamw_betas']
             eps = group['adamw_eps']
-            weight_decay = group['adamw_wd']
+            weight_decay = group.get('weight_decay', 0.0)
 
             for p in params:
                 g = p.grad

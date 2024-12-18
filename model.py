@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from .Muon.muon import Muon
+from Muon.muon import Muon
 
 def get_sinusoidal_embeddings(n_pos, d_model):
     position = torch.arange(n_pos).unsqueeze(1)

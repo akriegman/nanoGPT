@@ -189,7 +189,7 @@ class Muon(torch.optim.Optimizer):
                 buf3 = torch.randn_like(g)
                 buf3 *= group['noise'] / buf3.norm() * float(buf3.numel())**0.5
 
-                g = (buf1 + (torch.randn_like(g) * group['noise'])) / (eps + buf2.sqrt())
+                g = (buf1 + buf3) / (eps + buf2.sqrt())
 
                 bias_correction1 = 1 - beta1**step
                 bias_correction2 = 1 - beta2**step

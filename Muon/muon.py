@@ -186,6 +186,8 @@ class Muon(torch.optim.Optimizer):
                 buf2 = state['moment2']
                 buf1.lerp_(g, 1-beta1)
                 buf2.lerp_(g.square(), 1-beta2)
+                buf3 = torch.randn_like(g)
+                buf3 *= group['noise'] / buf3.norm() * buf3.numel().float().sqrt()
 
                 g = (buf1 + (torch.randn_like(g) * group['noise'])) / (eps + buf2.sqrt())
 

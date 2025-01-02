@@ -22,7 +22,12 @@ if not os.path.exists(data_path):
 
 # Load and prepare the data
 df = pd.read_csv(data_path, encoding='utf-8')
-text = "\n".join(df['text'].astype(str))
+
+# Print column names to debug
+print("Available columns:", df.columns.tolist())
+
+# Use 'post' instead of 'text'
+text = "\n".join(df['post'].astype(str))
 
 # Split into train and validation sets (90/10 split)
 train_data, val_data = train_test_split(

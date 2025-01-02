@@ -1,33 +1,19 @@
 import os
-import requests
 import tiktoken
 import numpy as np
-import pandas as pd
+from datasets import load_dataset
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 
 # Create data directory if it doesn't exist
 os.makedirs(os.path.dirname(__file__), exist_ok=True)
 
-# Download the Blog Authorship Corpus if not already present
-data_path = os.path.join(os.path.dirname(__file__), 'blogtext.csv')
-if not os.path.exists(data_path):
-    print("Downloading Blog Authorship Corpus...")
-    url = "https://raw.githubusercontent.com/rbroc/text-mining-course/master/data/blogtext.csv"
-    response = requests.get(url, stream=True)
-    with open(data_path, 'wb') as f:
-        for chunk in tqdm(response.iter_content(chunk_size=8192)):
-            if chunk:
-                f.write(chunk)
+# Load the dataset from Hugging Face
+print("Loading Blog Authorship Corpus from Hugging Face...")
+dataset = load_dataset("tasksource/blog_authorship_corpus")
 
-# Load and prepare the data
-df = pd.read_csv(data_path, encoding='utf-8')
-
-# Print column names to debug
-print("Available columns:", df.columns.tolist())
-
-# Use 'post' instead of 'text'
-text = "\n".join(df['post'].astype(str))
+# Combine all text entries
+text = "\n".join(dataset['train']['text'])
 
 # Split into train and validation sets (90/10 split)
 train_data, val_data = train_test_split(

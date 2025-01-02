@@ -140,6 +140,8 @@ class GPTConfig:
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
+    n_rep_layer: int = 1
+    n_rep: int = 4
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     pos_embedding_type: str = 'learned'  # 'learned' or 'sinusoidal'
@@ -162,6 +164,7 @@ class GPT(nn.Module):
                    else nn.Embedding(config.block_size, config.n_embd)),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            h_rep = nn.ModuleList([Block(config) for _ in range(config.n_rep_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
@@ -201,7 +204,10 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx, targets=None, rep=None):
+        if rep is None:
+            rep = self.config.n_rep
+        
         device = idx.device
         b, t = idx.size()
         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
@@ -211,7 +217,12 @@ class GPT(nn.Module):
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
-        for block in self.transformer.h:
+        for block in self.transformer.h[:self.config.n_layer//2]:
+            x = block(x)
+        for _ in range(rep):
+            for block in self.transformer.h_rep:
+                x = block(x)
+        for block in self.transformer.h[self.config.n_layer//2:]:
             x = block(x)
         x = self.transformer.ln_f(x)
 

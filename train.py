@@ -52,6 +52,8 @@ block_size = 1024
 n_layer = 12
 n_head = 12
 n_embd = 768
+n_rep = 4
+n_rep_layer = 0
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
 # adamw optimizer
@@ -160,6 +162,8 @@ model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=bloc
                   attention_activation=attention_activation,
                   pos_embedding_type=pos_embedding_type,
                   optimizer=optimizer,
+                  n_rep=n_rep,
+                  n_rep_layer=n_rep_layer,
                   noise=noise) # add noise to model_args
 if init_from == 'scratch':
     # init a new model from scratch
